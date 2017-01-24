@@ -895,13 +895,13 @@ void clusterMatchingFeature(std::string pointCloudPath1, int clusterNum1, std::s
 //        pass.filter (*curCloud);
 
         // ... and downsampling the point cloud
-        const float voxel_grid_size = 0.5f;
-        pcl::VoxelGrid<pcl::PointXYZ> vox_grid;
-        vox_grid.setInputCloud (curCloud);
-        vox_grid.setLeafSize (voxel_grid_size, voxel_grid_size, voxel_grid_size);
-        pcl::PointCloud<pcl::PointXYZ>::Ptr tempCloud (new pcl::PointCloud<pcl::PointXYZ>);
-        vox_grid.filter (*tempCloud);
-        curCloud = tempCloud;
+//        const float voxel_grid_size = 0.5f;
+//        pcl::VoxelGrid<pcl::PointXYZ> vox_grid;
+//        vox_grid.setInputCloud (curCloud);
+//        vox_grid.setLeafSize (voxel_grid_size, voxel_grid_size, voxel_grid_size);
+//        pcl::PointCloud<pcl::PointXYZ>::Ptr tempCloud (new pcl::PointCloud<pcl::PointXYZ>);
+//        vox_grid.filter (*tempCloud);
+//        curCloud = tempCloud;
         // Assign to the target FeatureCloud
         FeatureCloud target_cloud;
         target_cloud.setInputCloud (curCloud);
@@ -919,7 +919,7 @@ void clusterMatchingFeature(std::string pointCloudPath1, int clusterNum1, std::s
         TemplateAlignment::Result best_alignment;
         int best_index = template_align.findBestAlignment (best_alignment);
         const FeatureCloud &best_template = object_templates[best_index];
-
+        cout << "Match " << i << " on " << best_index << endl;
         // Print the alignment fitness score (values less than 0.00002 are good)
         printf ("Best fitness score: %f\n", best_alignment.fitness_score);
 
@@ -955,11 +955,11 @@ int main(int argc, char** argv)
 
 //    cout << srcPointCloudPathString << endl << refPointCloudPathString << endl;
 //    findVehicles(srcPointCloudPathString, refPointCloudPathString);
-    std::string pointCloudPath1 = "../data2/cloud1/";
+    std::string pointCloudPath1 = "../data1/cloud1/";
     int clusterNum1 = 4;
-    std::string pointCloudPath2 = "../data2/cloud2/";
+    std::string pointCloudPath2 = "../data1/cloud2/";
     int clusterNum2 = 4;
-    // clusterMatchingICP(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
-    clusterMatchingFeature(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
+    clusterMatchingICP(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
+    //clusterMatchingFeature(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
     return 0;
 }
