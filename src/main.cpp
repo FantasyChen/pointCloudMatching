@@ -876,7 +876,7 @@ void clusterMatchingFeature(std::string pointCloudPath1, int clusterNum1, std::s
         pcl::fromPCLPointCloud2(cloud_blob, *curCloud);
         std::vector<FeatureCloud> object_templates;
         object_templates.resize(0);
-        cout<<" fuck here" << curCloud->points.size() << endl;
+        cout<<"Points before downsampling:" << curCloud->points.size() << endl;
         for (int j = 0; j < clusterNum2; j++) {
             // load templates
             FeatureCloud template_cloud;
@@ -885,28 +885,27 @@ void clusterMatchingFeature(std::string pointCloudPath1, int clusterNum1, std::s
             std::cout << "POINTS:" << template_cloud.getPointCloud()->points.size() <<endl;
             object_templates.push_back(template_cloud);
         }
-        // Preprocess the cloud by...
-        // ...removing distant points
-        const float depth_limit = 1.0;
-        pcl::PassThrough<pcl::PointXYZ> pass;
-        pass.setInputCloud (curCloud);
-        pass.setFilterFieldName ("z");
-        pass.setFilterLimits (0, depth_limit);
-        pass.filter (*curCloud);
+//        // Preprocess the cloud by...
+//        // ...removing distant points
+//        const float depth_limit = 5;
+//        pcl::PassThrough<pcl::PointXYZ> pass;
+//        pass.setInputCloud (curCloud);
+//        pass.setFilterFieldName ("z");
+//        pass.setFilterLimits (0, depth_limit);
+//        pass.filter (*curCloud);
 
         // ... and downsampling the point cloud
-        const float voxel_grid_size = 0.005f;
+        const float voxel_grid_size = 0.5f;
         pcl::VoxelGrid<pcl::PointXYZ> vox_grid;
         vox_grid.setInputCloud (curCloud);
         vox_grid.setLeafSize (voxel_grid_size, voxel_grid_size, voxel_grid_size);
         pcl::PointCloud<pcl::PointXYZ>::Ptr tempCloud (new pcl::PointCloud<pcl::PointXYZ>);
         vox_grid.filter (*tempCloud);
         curCloud = tempCloud;
-
         // Assign to the target FeatureCloud
         FeatureCloud target_cloud;
         target_cloud.setInputCloud (curCloud);
-        std::cout << " fuck there" << target_cloud.getPointCloud()->points.size() << endl;
+        std::cout << "Points after downsampling" << target_cloud.getPointCloud()->points.size() << endl;
 
         // Set the TemplateAlignment inputs
         TemplateAlignment template_align;
