@@ -10,7 +10,25 @@
 //#include <opencv2/core.hpp>
 #include <opencv2/opencv.hpp>
 
+
+// Eigens
 #include <Eigen/Dense>
+#include <Eigen/Geometry>
+#include <Eigen/StdVector>
+
+
+
+#include <pcl/common/common_headers.h>
+#include <pcl/features/normal_3d.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/visualization/pcl_visualizer.h>
+#include <pcl/console/parse.h>
+#include <pcl/registration/icp.h>
+#include <pcl/registration/icp_nl.h>
+#include <pcl/registration/gicp.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/registration/transformation_validation_euclidean.h>
+
 #include <pcl/common/common_headers.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/io/pcd_io.h>
@@ -56,7 +74,7 @@
 #include <pcl/features/normal_3d.h>
 #include <pcl/features/fpfh.h>
 #include <pcl/registration/ia_ransac.h>
-
+#include "CeresICP.h"
 
 // -----------------------
 // -----Some Class--------
