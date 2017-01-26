@@ -739,6 +739,71 @@ void printHelp()
 }
 
 
+
+
+void pairwiseVisualizeCloud( pcl::PointCloud<pcl::PointXYZ>::Ptr first,  pcl::PointCloud<pcl::PointXYZ>::Ptr second, const std::string msg = ""){
+    boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
+    viewer->setBackgroundColor(0, 0, 0);
+    pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> tgt_h (first, 0, 255, 0);
+    pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> src_h (second, 255, 0, 0);
+    viewer->addPointCloud<pcl::PointXYZ>(first, tgt_h, "sample cloud");
+    viewer->addPointCloud<pcl::PointXYZ>(second, src_h, "sample cloud 2");
+    viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "sample cloud");
+    viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "sample cloud 2");
+    viewer->addCoordinateSystem(1.0);
+    viewer->initCameraParameters();
+    if (msg != "") {
+        viewer->addText(msg, 0, 0, "text");
+    }
+    while (!viewer->wasStopped())
+    {
+        viewer->spinOnce(100);
+        boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+    }
+
+}
+
+
+double calcDistanceByTranslation(Eigen::Matrix<float, 4, 4> mat){
+    // pass
+    return sqrt(mat(0, 3)*mat(0, 3) + mat(1, 3)*mat(1, 3) + mat(2, 3)*mat(2, 3));
+
+}
+
+double calcFitnessScore(pcl::PointCloud<pcl::PointXYZ> cloud_a, pcl::PointCloud<pcl::PointXYZ> cloud_b){
+    pcl::search::KdTree<pcl::PointXYZ> tree_b;
+    tree_b.setInputCloud(cloud_b.makeShared());
+    double sum_dist_a = 0;
+    for (size_t i = 0; i < cloud_a.points.size (); ++i)
+    {
+        std::vector<int> indices (1);
+        std::vector<float> sqr_distances (1);
+
+        tree_b.nearestKSearch(cloud_a.points[i], 1, indices, sqr_distances);
+        sum_dist_a += sqrt(sqr_distances[0]);
+    }
+
+    // compare B to A
+    pcl::search::KdTree<pcl::PointXYZ> tree_a;
+    tree_a.setInputCloud (cloud_a.makeShared ());
+    double sum_dist_b = 0;
+    for (size_t i = 0; i < cloud_b.points.size (); ++i)
+    {
+        std::vector<int> indices (1);
+        std::vector<float> sqr_distances (1);
+
+        tree_a.nearestKSearch (cloud_b.points[i], 1, indices, sqr_distances);
+        sum_dist_b  += sqrt(sqr_distances[0]);
+    }
+
+
+    double dist = (sum_dist_a+sum_dist_b)/2/(cloud_b.points.size() + cloud_a.points.size());
+    return 1/dist;
+
+}
+
+
+
 void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::string pointCloudPath2, int clusterNum2)
 {
     // parameters
@@ -782,19 +847,7 @@ void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::strin
         clusters2[i] = curCloud->makeShared();  // make copy into vector
     }
 
-    // create ICP and config
-    pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
-    //pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
-
-    // Set the max correspondence distance to 5cm (e.g., correspondences with higher distances will be ignored)
-    icp.setMaxCorrespondenceDistance(5);
-    // Set the maximum number of iterations (criterion 1)
-    icp.setMaximumIterations(1000000);   // 100000
-    // Set the transformation epsilon (criterion 2)
-    // icp.setTransformationEpsilon (1e-8);
-    // Set the euclidean distance difference epsilon (criterion 3)
-    icp.setEuclideanFitnessEpsilon(5);   // 3
-
+    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> alignedCloud;
     std::set<int> unmatched;
     for (int i = 0; i < clusterNum2; i++){
         unmatched.insert(i);
@@ -802,30 +855,77 @@ void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::strin
 
     for (int i = 0; i < clusterNum1; i++){
         std::cout<< i <<endl;
-        icp.setInputSource(clusters1[i]);
-        double maxScore = 0;
+
+        // target and big loop variables initialize here
         int bestMatch = -1;
+        double bestScore = -1;
+
         for (int j = 0; j< clusterNum2; j++){
             if (unmatched.find(j) == unmatched.end()){        //  first come, first use rule. may use a global optima later
                 continue;
             }
-            icp.setInputTarget(clusters2[j]);
-            pcl::PointCloud<pcl::PointXYZ> Final;
-            icp.align(Final);
-            bool isConverge = icp.hasConverged();
-            if (!isConverge){
-                continue;
+
+            // param and small loop variable initialize here
+            pcl::PointCloud<pcl::PointXYZ>::Ptr targetCloud(new pcl::PointCloud<pcl::PointXYZ>);
+            //targetCloud = clusters1[i]->makeShared();
+            pcl::copyPointCloud(*clusters1[i], *targetCloud);
+            pcl::PointCloud<pcl::PointXYZ>::Ptr refCloud(new pcl::PointCloud<pcl::PointXYZ>);    // create a temporary cloud to perform the iterative transformation
+            pcl::copyPointCloud(*clusters2[j], *refCloud);
+            //refCloud = clusters2[j]->makeShared();
+            std::vector<bool> inliers;
+            bool isConverge = false;
+            int iter = 0;
+            Eigen::Isometry3d fromCurToRef_estimated = Eigen::Isometry3d::Identity();
+            double robustNormWidth = 2.5;
+            // Ceres ICP iteration
+            while(!isConverge && iter < 1500)  // 100
+            {
+
+                double outlierThreshold = 200;
+                if(iter == 3)
+                    outlierThreshold = 20;
+
+                outlierThreshold -= iter*0.02;
+                outlierThreshold = outlierThreshold < 10 ? 10 : outlierThreshold;
+                Eigen::Isometry3d fromCurToRef_inc = MappingICP(targetCloud, refCloud, outlierThreshold, robustNormWidth);
+                std::cout << fromCurToRef_inc.matrix() << std::endl;
+                cout << refCloud->points.size()<<endl;
+                cout << targetCloud->points.size()<<endl;
+                // terminate rule
+                if(fabs(fromCurToRef_inc.translation()[0]) < 0.001 && fabs(fromCurToRef_inc.translation()[1]) < 0.001 && fabs(fromCurToRef_inc.translation()[2]) < 0.001) // 0.001
+                    isConverge = true;
+
+                for (int i = 0; i < refCloud->points.size(); i++)
+                {
+                    Eigen::Vector4d oriPoint;
+                    oriPoint << refCloud->points[i].x, refCloud->points[i].y, refCloud->points[i].z, 1.0;
+                    Eigen::Vector4d transformedPoint = fromCurToRef_inc * oriPoint;
+                    refCloud->points[i].x = transformedPoint[0];
+                    refCloud->points[i].y = transformedPoint[1];
+                    refCloud->points[i].z = transformedPoint[2];
+                }
+                fromCurToRef_estimated = fromCurToRef_inc*fromCurToRef_estimated;
+                std::cout << "iter: " << iter++ << std::endl;
             }
-            double score = icp.getFitnessScore();
-            std::cout << "has converged:" << isConverge << " score: " <<
-                      score << std::endl;
-            std::cout << icp.getFinalTransformation() << std::endl;
-            if (score > maxScore and score >= scoreThreshold){     // if current score is larger and is over the threshold, save it
-                maxScore = score;
-                bestMatch = j;
+            // Two option: use squared distance or iter number.
+            // Try iter number first
+            std::cout << "Final: "<< fromCurToRef_estimated.matrix() << std::endl;
+            refCloud->width = (int) clusters2[j]->points.size();
+            refCloud->height = 1;
+
+            std::cout << "has converged:" << isConverge << std::endl;
+            if (isConverge){
+                double score = calcFitnessScore(*refCloud, *targetCloud);
+                cout << "Current Score : " << score << " " << endl;
+                pairwiseVisualizeCloud(targetCloud, refCloud);
+                if(score <= bestScore){     // if current score is larger and is over the threshold, save it
+                    bestScore = score;
+                    bestMatch = j;
+                }
             }
         }
         if (bestMatch == -1){   // no valid match found
+            std::cout<<"unable to match No. " << i << " cluster" << endl;
             continue;
         }
         unmatched.erase(bestMatch);   // remove from unmatched clusters
@@ -834,42 +934,22 @@ void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::strin
     }
 
     // show all matches
-    for (int i = 0; i < matches.size(); i++) {
-        boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
-        viewer->setBackgroundColor(0, 0, 0);
-        pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> tgt_h (clusters1[matches[i].first], 0, 255, 0);
-        pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> src_h (clusters2[matches[i].second], 255, 0, 0);
-        viewer->addPointCloud<pcl::PointXYZ>(clusters1[matches[i].first], tgt_h, "sample cloud");
-        viewer->addPointCloud<pcl::PointXYZ>(clusters2[matches[i].second], src_h, "sample cloud 2");
-        viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "sample cloud");
-        viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "sample cloud 2");
-        viewer->addCoordinateSystem(1.0);
-        viewer->initCameraParameters();
-        while (!viewer->wasStopped())
-        {
-            viewer->spinOnce(100);
-            boost::this_thread::sleep(boost::posix_time::microseconds(100000));
-        }
-
-
+    for(int i =1; i<matches.size(); i++){
+        const std::string current = "Match " +  std::to_string(matches[i].first) + " on " + std::to_string(matches[i].second);
+        pairwiseVisualizeCloud(clusters1[matches[i].first], clusters2[matches[i].second], current);
     }
 
-
-
-
-
-}
-
-
-double calcDistanceByTranslation(Eigen::Matrix<float, 4, 4> mat){
-    // pass
-    return sqrt(mat(0, 3)*mat(0, 3) + mat(1, 3)*mat(1, 3) + mat(2, 3)*mat(2, 3));
-
 }
 
 
 
-
+pcl::PointCloud<pcl::PointXYZ>::Ptr transformCloudFromMatrix(Eigen::Affine3f transform, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud){
+    // Executing the transformation
+    pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud (new pcl::PointCloud<pcl::PointXYZ> ());
+    // You can either apply transform_1 or transform_2; they are the same
+    pcl::transformPointCloud (*cloud, *transformed_cloud, transform);
+    return transformed_cloud;
+}
 
 // feature based matching
 void clusterMatchingFeature(std::string pointCloudPath1, int clusterNum1, std::string pointCloudPath2, int clusterNum2){
