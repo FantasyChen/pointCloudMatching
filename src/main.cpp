@@ -847,7 +847,107 @@ void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::strin
         clusters2[i] = curCloud->makeShared();  // make copy into vector
     }
 
-    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> alignedCloud;
+    // Ceres ICP
+//    std::set<int> unmatched;
+//    for (int i = 0; i < clusterNum2; i++){
+//        unmatched.insert(i);
+//    }
+//
+//    for (int i = 0; i < clusterNum1; i++){
+//        std::cout<< i <<endl;
+//
+//        // target and big loop variables initialize here
+//        int bestMatch = -1;
+//        double bestScore = -1;
+//
+//        for (int j = 0; j< clusterNum2; j++){
+//            if (unmatched.find(j) == unmatched.end()){        //  first come, first use rule. may use a global optima later
+//                continue;
+//            }
+//
+//            // param and small loop variable initialize here
+//            pcl::PointCloud<pcl::PointXYZ>::Ptr targetCloud(new pcl::PointCloud<pcl::PointXYZ>);
+//            //targetCloud = clusters1[i]->makeShared();
+//            pcl::copyPointCloud(*clusters1[i], *targetCloud);
+//            pcl::PointCloud<pcl::PointXYZ>::Ptr refCloud(new pcl::PointCloud<pcl::PointXYZ>);    // create a temporary cloud to perform the iterative transformation
+//            pcl::copyPointCloud(*clusters2[j], *refCloud);
+//            //refCloud = clusters2[j]->makeShared();
+//            std::vector<bool> inliers;
+//            bool isConverge = false;
+//            int iter = 0;
+//            Eigen::Isometry3d fromCurToRef_estimated = Eigen::Isometry3d::Identity();
+//            double robustNormWidth = 2.5;
+//            // Ceres ICP iteration
+//            while(!isConverge && iter < 1500)  // 100
+//            {
+//
+//                double outlierThreshold = 200;
+//                if(iter == 3)
+//                    outlierThreshold = 20;
+//
+//                outlierThreshold -= iter*0.02;
+//                outlierThreshold = outlierThreshold < 10 ? 10 : outlierThreshold;
+//                Eigen::Isometry3d fromCurToRef_inc = MappingICP(targetCloud, refCloud, outlierThreshold, robustNormWidth);
+//                std::cout << fromCurToRef_inc.matrix() << std::endl;
+//                cout << refCloud->points.size()<<endl;
+//                cout << targetCloud->points.size()<<endl;
+//                // terminate rule
+//                if(fabs(fromCurToRef_inc.translation()[0]) < 0.001 && fabs(fromCurToRef_inc.translation()[1]) < 0.001 && fabs(fromCurToRef_inc.translation()[2]) < 0.001) // 0.001
+//                    isConverge = true;
+//
+//                for (int i = 0; i < refCloud->points.size(); i++)
+//                {
+//                    Eigen::Vector4d oriPoint;
+//                    oriPoint << refCloud->points[i].x, refCloud->points[i].y, refCloud->points[i].z, 1.0;
+//                    Eigen::Vector4d transformedPoint = fromCurToRef_inc * oriPoint;
+//                    refCloud->points[i].x = transformedPoint[0];
+//                    refCloud->points[i].y = transformedPoint[1];
+//                    refCloud->points[i].z = transformedPoint[2];
+//                }
+//                fromCurToRef_estimated = fromCurToRef_inc*fromCurToRef_estimated;
+//                std::cout << "iter: " << iter++ << std::endl;
+//            }
+//            // Two option: use squared distance or iter number.
+//            // Try iter number first
+//            std::cout << "Final: "<< fromCurToRef_estimated.matrix() << std::endl;
+//            refCloud->width = (int) clusters2[j]->points.size();
+//            refCloud->height = 1;
+//
+//            std::cout << "has converged:" << isConverge << std::endl;
+//            if (isConverge){
+//                double score = calcFitnessScore(*refCloud, *targetCloud);
+//                cout << "Current Score : " << score << " " << endl;
+//                pairwiseVisualizeCloud(targetCloud, refCloud);
+//                if(score <= bestScore){     // if current score is larger and is over the threshold, save it
+//                    bestScore = score;
+//                    bestMatch = j;
+//                }
+//            }
+//        }
+//        if (bestMatch == -1){   // no valid match found
+//            std::cout<<"unable to match No. " << i << " cluster" << endl;
+//            continue;
+//        }
+//        unmatched.erase(bestMatch);   // remove from unmatched clusters
+//        matches.push_back(std::make_pair(i, bestMatch));
+//        std::cout << i<< "  " << bestMatch <<endl;
+//    }
+
+
+
+    // create ICP and config
+    pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
+    //pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
+
+    // Set the max correspondence distance to 5cm (e.g., correspondences with higher distances will be ignored)
+    icp.setMaxCorrespondenceDistance(5);
+    // Set the maximum number of iterations (criterion 1)
+    icp.setMaximumIterations(1000000);   // 100000
+    // Set the transformation epsilon (criterion 2)
+    // icp.setTransformationEpsilon (1e-8);
+    // Set the euclidean distance difference epsilon (criterion 3)
+    icp.setEuclideanFitnessEpsilon(5);   // 3
+
     std::set<int> unmatched;
     for (int i = 0; i < clusterNum2; i++){
         unmatched.insert(i);
@@ -855,77 +955,30 @@ void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::strin
 
     for (int i = 0; i < clusterNum1; i++){
         std::cout<< i <<endl;
-
-        // target and big loop variables initialize here
+        icp.setInputSource(clusters1[i]);
+        double maxScore = 0;
         int bestMatch = -1;
-        double bestScore = -1;
-
         for (int j = 0; j< clusterNum2; j++){
             if (unmatched.find(j) == unmatched.end()){        //  first come, first use rule. may use a global optima later
                 continue;
             }
-
-            // param and small loop variable initialize here
-            pcl::PointCloud<pcl::PointXYZ>::Ptr targetCloud(new pcl::PointCloud<pcl::PointXYZ>);
-            //targetCloud = clusters1[i]->makeShared();
-            pcl::copyPointCloud(*clusters1[i], *targetCloud);
-            pcl::PointCloud<pcl::PointXYZ>::Ptr refCloud(new pcl::PointCloud<pcl::PointXYZ>);    // create a temporary cloud to perform the iterative transformation
-            pcl::copyPointCloud(*clusters2[j], *refCloud);
-            //refCloud = clusters2[j]->makeShared();
-            std::vector<bool> inliers;
-            bool isConverge = false;
-            int iter = 0;
-            Eigen::Isometry3d fromCurToRef_estimated = Eigen::Isometry3d::Identity();
-            double robustNormWidth = 2.5;
-            // Ceres ICP iteration
-            while(!isConverge && iter < 1500)  // 100
-            {
-
-                double outlierThreshold = 200;
-                if(iter == 3)
-                    outlierThreshold = 20;
-
-                outlierThreshold -= iter*0.02;
-                outlierThreshold = outlierThreshold < 10 ? 10 : outlierThreshold;
-                Eigen::Isometry3d fromCurToRef_inc = MappingICP(targetCloud, refCloud, outlierThreshold, robustNormWidth);
-                std::cout << fromCurToRef_inc.matrix() << std::endl;
-                cout << refCloud->points.size()<<endl;
-                cout << targetCloud->points.size()<<endl;
-                // terminate rule
-                if(fabs(fromCurToRef_inc.translation()[0]) < 0.001 && fabs(fromCurToRef_inc.translation()[1]) < 0.001 && fabs(fromCurToRef_inc.translation()[2]) < 0.001) // 0.001
-                    isConverge = true;
-
-                for (int i = 0; i < refCloud->points.size(); i++)
-                {
-                    Eigen::Vector4d oriPoint;
-                    oriPoint << refCloud->points[i].x, refCloud->points[i].y, refCloud->points[i].z, 1.0;
-                    Eigen::Vector4d transformedPoint = fromCurToRef_inc * oriPoint;
-                    refCloud->points[i].x = transformedPoint[0];
-                    refCloud->points[i].y = transformedPoint[1];
-                    refCloud->points[i].z = transformedPoint[2];
-                }
-                fromCurToRef_estimated = fromCurToRef_inc*fromCurToRef_estimated;
-                std::cout << "iter: " << iter++ << std::endl;
+            icp.setInputTarget(clusters2[j]);
+            pcl::PointCloud<pcl::PointXYZ> Final;
+            icp.align(Final);
+            bool isConverge = icp.hasConverged();
+            if (!isConverge){
+                continue;
             }
-            // Two option: use squared distance or iter number.
-            // Try iter number first
-            std::cout << "Final: "<< fromCurToRef_estimated.matrix() << std::endl;
-            refCloud->width = (int) clusters2[j]->points.size();
-            refCloud->height = 1;
-
-            std::cout << "has converged:" << isConverge << std::endl;
-            if (isConverge){
-                double score = calcFitnessScore(*refCloud, *targetCloud);
-                cout << "Current Score : " << score << " " << endl;
-                pairwiseVisualizeCloud(targetCloud, refCloud);
-                if(score <= bestScore){     // if current score is larger and is over the threshold, save it
-                    bestScore = score;
-                    bestMatch = j;
-                }
+            double score = icp.getFitnessScore();
+            std::cout << "has converged:" << isConverge << " score: " <<
+                      score << std::endl;
+            std::cout << icp.getFinalTransformation() << std::endl;
+            if (score > maxScore and score >= scoreThreshold){     // if current score is larger and is over the threshold, save it
+                maxScore = score;
+                bestMatch = j;
             }
         }
         if (bestMatch == -1){   // no valid match found
-            std::cout<<"unable to match No. " << i << " cluster" << endl;
             continue;
         }
         unmatched.erase(bestMatch);   // remove from unmatched clusters
@@ -934,7 +987,7 @@ void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::strin
     }
 
     // show all matches
-    for(int i =1; i<matches.size(); i++){
+    for(int i =0; i<matches.size(); i++){
         const std::string current = "Match " +  std::to_string(matches[i].first) + " on " + std::to_string(matches[i].second);
         pairwiseVisualizeCloud(clusters1[matches[i].first], clusters2[matches[i].second], current);
     }
@@ -1053,11 +1106,11 @@ int main(int argc, char** argv)
 
 //    cout << srcPointCloudPathString << endl << refPointCloudPathString << endl;
 //    findVehicles(srcPointCloudPathString, refPointCloudPathString);
-    std::string pointCloudPath1 = "../data1/cloud1/";
-    int clusterNum1 = 4;
-    std::string pointCloudPath2 = "../data1/cloud2/";
-    int clusterNum2 = 4;
-    clusterMatchingICP(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
+//    std::string pointCloudPath1 = "../data1/cloud1/";
+//    int clusterNum1 = 4;
+//    std::string pointCloudPath2 = "../data1/cloud2/";
+//    int clusterNum2 = 4;
+//    clusterMatchingICP(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
     //clusterMatchingFeature(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
     return 0;
 }
