@@ -753,7 +753,7 @@ void pairwiseVisualizeCloud( pcl::PointCloud<pcl::PointXYZ>::Ptr first,  pcl::Po
     viewer->addCoordinateSystem(1.0);
     viewer->initCameraParameters();
     if (msg != "") {
-        viewer->addText(msg, 0, 0, "text");
+        viewer->addText(msg, 5, 5, 10, 255, 0, 0,  "text");
     }
     while (!viewer->wasStopped())
     {
@@ -767,7 +767,6 @@ void pairwiseVisualizeCloud( pcl::PointCloud<pcl::PointXYZ>::Ptr first,  pcl::Po
 double calcDistanceByTranslation(Eigen::Matrix<float, 4, 4> mat){
     // pass
     return sqrt(mat(0, 3)*mat(0, 3) + mat(1, 3)*mat(1, 3) + mat(2, 3)*mat(2, 3));
-
 }
 
 double calcFitnessScore(pcl::PointCloud<pcl::PointXYZ> cloud_a, pcl::PointCloud<pcl::PointXYZ> cloud_b){
@@ -800,6 +799,39 @@ double calcFitnessScore(pcl::PointCloud<pcl::PointXYZ> cloud_a, pcl::PointCloud<
     double dist = (sum_dist_a+sum_dist_b)/2/(cloud_b.points.size() + cloud_a.points.size());
     return 1/dist;
 
+}
+
+
+double calcDistanceBetweenClouds(pcl::PointCloud<pcl::PointXYZ> cloud_a, pcl::PointCloud<pcl::PointXYZ> cloud_b)
+{
+    pcl::search::KdTree<pcl::PointXYZ> tree_b;
+    tree_b.setInputCloud(cloud_b.makeShared());
+    double sum_dist_a = 0;
+    for (size_t i = 0; i < cloud_a.points.size (); ++i)
+    {
+        std::vector<int> indices (1);
+        std::vector<float> sqr_distances (1);
+
+        tree_b.nearestKSearch(cloud_a.points[i], 1, indices, sqr_distances);
+        sum_dist_a += sqrt(sqr_distances[0]);
+    }
+
+    // compare B to A
+    pcl::search::KdTree<pcl::PointXYZ> tree_a;
+    tree_a.setInputCloud (cloud_a.makeShared ());
+    double sum_dist_b = 0;
+    for (size_t i = 0; i < cloud_b.points.size (); ++i)
+    {
+        std::vector<int> indices (1);
+        std::vector<float> sqr_distances (1);
+
+        tree_a.nearestKSearch (cloud_b.points[i], 1, indices, sqr_distances);
+        sum_dist_b  += sqrt(sqr_distances[0]);
+    }
+
+
+    double dist = (sum_dist_a+sum_dist_b)/2/(cloud_b.points.size() + cloud_a.points.size());
+    return dist;
 }
 
 
@@ -949,6 +981,7 @@ void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::strin
     icp.setEuclideanFitnessEpsilon(5);   // 3
 
     std::set<int> unmatched;
+    std::vector<double> distVec;
     for (int i = 0; i < clusterNum2; i++){
         unmatched.insert(i);
     }
@@ -983,12 +1016,16 @@ void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::strin
         }
         unmatched.erase(bestMatch);   // remove from unmatched clusters
         matches.push_back(std::make_pair(i, bestMatch));
+        double distance = calcDistanceBetweenClouds(*clusters1[i], *clusters2[bestMatch]);
+        distVec.push_back(distance);
         std::cout << i<< "  " << bestMatch <<endl;
     }
 
     // show all matches
     for(int i =0; i<matches.size(); i++){
-        const std::string current = "Match " +  std::to_string(matches[i].first) + " on " + std::to_string(matches[i].second);
+        const std::string current = "Match " +  std::to_string(matches[i].first) + " on " + std::to_string(matches[i].second) +
+                                    " with distance of " + std::to_string(distVec[i]);
+        cout << current << endl;
         pairwiseVisualizeCloud(clusters1[matches[i].first], clusters2[matches[i].second], current);
     }
 
@@ -1106,11 +1143,11 @@ int main(int argc, char** argv)
 
 //    cout << srcPointCloudPathString << endl << refPointCloudPathString << endl;
 //    findVehicles(srcPointCloudPathString, refPointCloudPathString);
-//    std::string pointCloudPath1 = "../data1/cloud1/";
-//    int clusterNum1 = 4;
-//    std::string pointCloudPath2 = "../data1/cloud2/";
-//    int clusterNum2 = 4;
-//    clusterMatchingICP(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
+    std::string pointCloudPath1 = "../data1/cloud1/";
+    int clusterNum1 = 4;
+    std::string pointCloudPath2 = "../data1/cloud2/";
+    int clusterNum2 = 4;
+    clusterMatchingICP(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
     //clusterMatchingFeature(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
     return 0;
 }
