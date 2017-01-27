@@ -1,5 +1,5 @@
 //
-// Created by lifan on 1/25/17.
+// Created by Lifan on 1/25/17.
 //
 
 #ifndef POINTS_GROUPING_UTILS_H
@@ -164,6 +164,9 @@ namespace utils{
      * @param mat
      * @return
      */
+
+
+
     double calcDistanceByTranslation(Eigen::Matrix<float, 4, 4> mat){
         // pass
         return sqrt(mat(0, 3)*mat(0, 3) + mat(1, 3)*mat(1, 3) + mat(2, 3)*mat(2, 3));
