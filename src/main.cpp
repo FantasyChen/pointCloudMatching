@@ -298,7 +298,7 @@ private:
 
 
 float maxLengthOfBoundingBox = 10.0;
-float minLengthOfBoundingBox = 1.0;
+float minLengthOfBoundingBox = 2.0;
 
 
 class BoundingBox
@@ -964,24 +964,6 @@ void clusterMatchingFeature(std::string pointCloudPath1, int clusterNum1, std::s
             std::cout << "POINTS:" << template_cloud.getPointCloud()->points.size() <<endl;
             object_templates.push_back(template_cloud);
         }
-//        // Preprocess the cloud by...
-//        // ...removing distant points
-//        const float depth_limit = 5;
-//        pcl::PassThrough<pcl::PointXYZ> pass;
-//        pass.setInputCloud (curCloud);
-//        pass.setFilterFieldName ("z");
-//        pass.setFilterLimits (0, depth_limit);
-//        pass.filter (*curCloud);
-
-        // ... and downsampling the point cloud
-//        const float voxel_grid_size = 0.5f;
-//        pcl::VoxelGrid<pcl::PointXYZ> vox_grid;
-//        vox_grid.setInputCloud (curCloud);
-//        vox_grid.setLeafSize (voxel_grid_size, voxel_grid_size, voxel_grid_size);
-//        pcl::PointCloud<pcl::PointXYZ>::Ptr tempCloud (new pcl::PointCloud<pcl::PointXYZ>);
-//        vox_grid.filter (*tempCloud);
-//        curCloud = tempCloud;
-        // Assign to the target FeatureCloud
         FeatureCloud target_cloud;
         target_cloud.setInputCloud (curCloud);
         std::cout << "Points after downsampling" << target_cloud.getPointCloud()->points.size() << endl;
@@ -1050,7 +1032,7 @@ void multiFrameMatching(std::string pointCloudPath, int cloudNum){
             bool isFound = false;
             for (int j=0; j<matches.size(); j++){
                 if(matches[j].first == groups[i]){
-                    groups[i] == matches[j].second;
+                    groups[i] = matches[j].second;
                     isFound = true;
                     break;
                 }
@@ -1079,6 +1061,8 @@ void multiFrameMatching(std::string pointCloudPath, int cloudNum){
 
 int main(int argc, char** argv)
 {
+
+    // part for get points grouping
 //    if (argc < 3)
 //    {
 //        printHelp();
@@ -1086,15 +1070,21 @@ int main(int argc, char** argv)
 //    }
 //    std::string srcPointCloudPathString = argv[1];
 //    std::string refPointCloudPathString = argv[2];
-//
 //    cout << srcPointCloudPathString << endl << refPointCloudPathString << endl;
 //    findVehicles(srcPointCloudPathString, refPointCloudPathString);
-    std::string pointCloudPath1 = "../data2/cloud3/";
-    std::string pointCloudPath = "../data2/";
+//
+
+
+    // part for multi-frame matching
+    std::string pointCloudPath = "../data3/";
     multiFrameMatching(pointCloudPath,utils::getFileCountInFolder(pointCloudPath));
-    int clusterNum1 = 3;
-    std::string pointCloudPath2 = "../data2/cloud4/";
-    int clusterNum2 = 5;
+
+//
+
+//    std::string pointCloudPath1 = "../data2/cloud3/";
+//    int clusterNum1 = 3;
+//    std::string pointCloudPath2 = "../data2/cloud4/";
+//    int clusterNum2 = 5;
 //    clusterMatchingICP(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
 //    clusterMatchingFeature(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
 

@@ -80,6 +80,12 @@
 
 namespace utils{
     using namespace std;
+    /*!
+     * visualize point clouds pairwise
+     * @param first
+     * @param second
+     * @param msg
+     */
     void pairwiseVisualizeCloud( pcl::PointCloud<pcl::PointXYZ>::Ptr first,  pcl::PointCloud<pcl::PointXYZ>::Ptr second, const std::string msg = ""){
         boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
         viewer->setBackgroundColor(0, 0, 0);
@@ -101,6 +107,14 @@ namespace utils{
         }
 
     }
+    /*!
+     * load point clouds from a directoy
+     * @param vPath: the path of the directory
+     * @param cloudNum: the number of total clouds in the directory
+     * @param prefix: the prefix of a cloud file name. Typically "cloud_cluster_"
+     * @param suffix: the suffix of a cloud file name. Typically ".pcd"
+     * @return
+     */
     std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> loadCloudsFromDirectory(std::string vPath, int cloudNum, const std::string
                         prefix = "cloud_cluster_", const std::string suffix = ".pcd"){
         std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> clouds(cloudNum);
@@ -116,7 +130,11 @@ namespace utils{
         return clouds;
     }
 
-
+    /*!
+     * visualize all the point clouds within a vector
+     * @param clouds
+     * @param msg
+     */
     void multiVisualizeCloud( std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> clouds, const std::string msg = ""){
         boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
 
@@ -141,12 +159,23 @@ namespace utils{
 
     }
 
-
+    /*!
+     * given the transformation matrix, calculate the distance (translation distance).
+     * @param mat
+     * @return
+     */
     double calcDistanceByTranslation(Eigen::Matrix<float, 4, 4> mat){
         // pass
         return sqrt(mat(0, 3)*mat(0, 3) + mat(1, 3)*mat(1, 3) + mat(2, 3)*mat(2, 3));
     }
 
+
+    /*!
+     * get the fitness score of two matches
+     * @param cloud_a
+     * @param cloud_b
+     * @return
+     */
     double calcFitnessScore(pcl::PointCloud<pcl::PointXYZ> cloud_a, pcl::PointCloud<pcl::PointXYZ> cloud_b){
         pcl::search::KdTree<pcl::PointXYZ> tree_b;
         tree_b.setInputCloud(cloud_b.makeShared());
@@ -179,7 +208,12 @@ namespace utils{
 
     }
 
-
+    /*!
+     * get the minimum distance among two clouds.
+     * @param cloud_a
+     * @param cloud_b
+     * @return
+     */
     double calcDistanceBetweenClouds(pcl::PointCloud<pcl::PointXYZ> cloud_a, pcl::PointCloud<pcl::PointXYZ> cloud_b)
     {
         pcl::search::KdTree<pcl::PointXYZ> tree_b;
@@ -212,7 +246,11 @@ namespace utils{
         return dist;
     }
 
-
+    /*!
+     * get the total count of files in a folder (excludes . and ..)
+     * @param vPath
+     * @return
+     */
     int getFileCountInFolder(string vPath){
         DIR *dir;
         struct dirent *ent;
@@ -232,6 +270,16 @@ namespace utils{
         }
 
     }
+
+
+
+
+    /*!
+     * perform a certain transformation matrix on a point cloud
+     * @param transform
+     * @param cloud
+     * @return
+     */
     pcl::PointCloud<pcl::PointXYZ>::Ptr transformCloudFromMatrix(Eigen::Matrix4f transform, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud){
         // Executing the transformation
         pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud (new pcl::PointCloud<pcl::PointXYZ> ());
