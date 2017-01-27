@@ -29,5 +29,5 @@ MESSAGE("gflags found ${Gflags_FOUND} at ${GFLAGS_INCLUDE_DIRS} with namespace: 
 add_library(CeresICP CeresICP.cpp)
 TARGET_LINK_LIBRARIES(CeresICP ${OpenCV_LIBS} ${CERES_LIBRARIES} ${GFLAGS_LIBRARIES} ${PCL_LIBRARIES})
 
-add_executable (points_grouping main.cpp)
+add_executable (points_grouping main.cpp utils.h)
 TARGET_LINK_LIBRARIES(points_grouping CeresICP ${OpenCV_LIBS} ${PCL_LIBRARIES} ${CSPARSE_LIBRARY} ${CERES_LIBRARIES} ${GFLAGS_LIBRARIES})

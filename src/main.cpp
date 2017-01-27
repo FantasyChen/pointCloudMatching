@@ -15,7 +15,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
 #include <Eigen/StdVector>
-
+#include <unordered_map>
 
 
 #include <pcl/common/common_headers.h>
@@ -74,8 +74,11 @@
 #include <pcl/features/normal_3d.h>
 #include <pcl/features/fpfh.h>
 #include <pcl/registration/ia_ransac.h>
-#include "CeresICP.h"
 
+
+
+#include "CeresICP.h"
+#include "utils.h"
 // -----------------------
 // -----Some Class--------
 // -----------------------
@@ -295,7 +298,7 @@ private:
 
 
 float maxLengthOfBoundingBox = 10.0;
-float minLengthOfBoundingBox = 2.0;
+float minLengthOfBoundingBox = 1.0;
 
 
 class BoundingBox
@@ -741,102 +744,8 @@ void printHelp()
 
 
 
-void pairwiseVisualizeCloud( pcl::PointCloud<pcl::PointXYZ>::Ptr first,  pcl::PointCloud<pcl::PointXYZ>::Ptr second, const std::string msg = ""){
-    boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
-    viewer->setBackgroundColor(0, 0, 0);
-    pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> tgt_h (first, 0, 255, 0);
-    pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> src_h (second, 255, 0, 0);
-    viewer->addPointCloud<pcl::PointXYZ>(first, tgt_h, "sample cloud");
-    viewer->addPointCloud<pcl::PointXYZ>(second, src_h, "sample cloud 2");
-    viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "sample cloud");
-    viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "sample cloud 2");
-    viewer->addCoordinateSystem(1.0);
-    viewer->initCameraParameters();
-    if (msg != "") {
-        viewer->addText(msg, 5, 5, 10, 255, 0, 0,  "text");
-    }
-    while (!viewer->wasStopped())
-    {
-        viewer->spinOnce(100);
-        boost::this_thread::sleep(boost::posix_time::microseconds(100000));
-    }
 
-}
-
-
-double calcDistanceByTranslation(Eigen::Matrix<float, 4, 4> mat){
-    // pass
-    return sqrt(mat(0, 3)*mat(0, 3) + mat(1, 3)*mat(1, 3) + mat(2, 3)*mat(2, 3));
-}
-
-double calcFitnessScore(pcl::PointCloud<pcl::PointXYZ> cloud_a, pcl::PointCloud<pcl::PointXYZ> cloud_b){
-    pcl::search::KdTree<pcl::PointXYZ> tree_b;
-    tree_b.setInputCloud(cloud_b.makeShared());
-    double sum_dist_a = 0;
-    for (size_t i = 0; i < cloud_a.points.size (); ++i)
-    {
-        std::vector<int> indices (1);
-        std::vector<float> sqr_distances (1);
-
-        tree_b.nearestKSearch(cloud_a.points[i], 1, indices, sqr_distances);
-        sum_dist_a += sqrt(sqr_distances[0]);
-    }
-
-    // compare B to A
-    pcl::search::KdTree<pcl::PointXYZ> tree_a;
-    tree_a.setInputCloud (cloud_a.makeShared ());
-    double sum_dist_b = 0;
-    for (size_t i = 0; i < cloud_b.points.size (); ++i)
-    {
-        std::vector<int> indices (1);
-        std::vector<float> sqr_distances (1);
-
-        tree_a.nearestKSearch (cloud_b.points[i], 1, indices, sqr_distances);
-        sum_dist_b  += sqrt(sqr_distances[0]);
-    }
-
-
-    double dist = (sum_dist_a+sum_dist_b)/2/(cloud_b.points.size() + cloud_a.points.size());
-    return 1/dist;
-
-}
-
-
-double calcDistanceBetweenClouds(pcl::PointCloud<pcl::PointXYZ> cloud_a, pcl::PointCloud<pcl::PointXYZ> cloud_b)
-{
-    pcl::search::KdTree<pcl::PointXYZ> tree_b;
-    tree_b.setInputCloud(cloud_b.makeShared());
-    double sum_dist_a = 0;
-    for (size_t i = 0; i < cloud_a.points.size (); ++i)
-    {
-        std::vector<int> indices (1);
-        std::vector<float> sqr_distances (1);
-
-        tree_b.nearestKSearch(cloud_a.points[i], 1, indices, sqr_distances);
-        sum_dist_a += sqrt(sqr_distances[0]);
-    }
-
-    // compare B to A
-    pcl::search::KdTree<pcl::PointXYZ> tree_a;
-    tree_a.setInputCloud (cloud_a.makeShared ());
-    double sum_dist_b = 0;
-    for (size_t i = 0; i < cloud_b.points.size (); ++i)
-    {
-        std::vector<int> indices (1);
-        std::vector<float> sqr_distances (1);
-
-        tree_a.nearestKSearch (cloud_b.points[i], 1, indices, sqr_distances);
-        sum_dist_b  += sqrt(sqr_distances[0]);
-    }
-
-
-    double dist = (sum_dist_a+sum_dist_b)/2/(cloud_b.points.size() + cloud_a.points.size());
-    return dist;
-}
-
-
-
-void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::string pointCloudPath2, int clusterNum2)
+std::vector<std::pair<int, int>> clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::string pointCloudPath2, int clusterNum2)
 {
     // parameters
     int pointNumThreshold = 100;  // a cloud contains less points will be discarded.
@@ -848,36 +757,22 @@ void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::strin
     // load into data
     std::string cloudFilePrefix = "cloud_cluster_";
     std::string cloudFileSuffix = ".pcd";
-    if (clusterNum1 > clusterNum2){
-        int temp = clusterNum1;
-        std::string tempPath = pointCloudPath1;
-        clusterNum1 = clusterNum2;
-        pointCloudPath1 = pointCloudPath2;
-        pointCloudPath2 = tempPath;
-        clusterNum2 = temp;
-    }
-    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> clusters1(clusterNum1);
-    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> clusters2(clusterNum2);
+
+    // make sure the first one is smaller
+//    if (clusterNum1 > clusterNum2){
+//        int temp = clusterNum1;
+//        std::string tempPath = pointCloudPath1;
+//        clusterNum1 = clusterNum2;
+//        pointCloudPath1 = pointCloudPath2;
+//        pointCloudPath2 = tempPath;
+//        clusterNum2 = temp;
+//    }
+    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> clusters1;
+    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> clusters2;
     std::vector<std::pair<int, int>> matches;
 
-    for(int i = 0; i < clusterNum1; i++){
-        std::string curPath = pointCloudPath1 + cloudFilePrefix + std::to_string(i) + cloudFileSuffix;
-        pcl::PointCloud<pcl::PointXYZ>::Ptr curCloud(new pcl::PointCloud<pcl::PointXYZ>);
-        pcl::PCLPointCloud2 cloud_blob;
-        pcl::io::loadPCDFile(curPath.c_str(), cloud_blob);
-        pcl::fromPCLPointCloud2(cloud_blob, *curCloud); //* convert from pcl/PCLPointCloud2 to pcl::PointCloud<T>
-        std::cout<< "Loading..." << i << "  Size:" << curCloud->points.size() <<endl;
-        clusters1[i] = curCloud->makeShared();  // make copy into vector
-    }
-    for(int i = 0; i < clusterNum2; i++){
-        std::string curPath = pointCloudPath2 + cloudFilePrefix + std::to_string(i) + cloudFileSuffix;
-        pcl::PointCloud<pcl::PointXYZ>::Ptr curCloud(new pcl::PointCloud<pcl::PointXYZ>);
-        pcl::PCLPointCloud2 cloud_blob;
-        pcl::io::loadPCDFile(curPath.c_str(), cloud_blob);
-        pcl::fromPCLPointCloud2(cloud_blob, *curCloud); //* convert from pcl/PCLPointCloud2 to pcl::PointCloud<T>
-        std::cout<< "Loading..." << i << "  Size:" << curCloud->points.size() <<endl;
-        clusters2[i] = curCloud->makeShared();  // make copy into vector
-    }
+    clusters1 = utils::loadCloudsFromDirectory(pointCloudPath1, clusterNum1);
+    clusters2 = utils::loadCloudsFromDirectory(pointCloudPath2, clusterNum2);
 
     // Ceres ICP
 //    std::set<int> unmatched;
@@ -971,14 +866,14 @@ void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::strin
     pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
     //pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
 
-    // Set the max correspondence distance to 5cm (e.g., correspondences with higher distances will be ignored)
-    icp.setMaxCorrespondenceDistance(5);
+    // Set the max correspondence distance to 5m
+    icp.setMaxCorrespondenceDistance(3); // 5
     // Set the maximum number of iterations (criterion 1)
-    icp.setMaximumIterations(1000000);   // 100000
+    icp.setMaximumIterations(1000000);   // 100000  //1000000
     // Set the transformation epsilon (criterion 2)
     // icp.setTransformationEpsilon (1e-8);
     // Set the euclidean distance difference epsilon (criterion 3)
-    icp.setEuclideanFitnessEpsilon(5);   // 3
+    icp.setEuclideanFitnessEpsilon(0.01);   // 3
 
     std::set<int> unmatched;
     std::vector<double> distVec;
@@ -1007,6 +902,8 @@ void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::strin
                       score << std::endl;
             std::cout << icp.getFinalTransformation() << std::endl;
             if (score > maxScore and score >= scoreThreshold){     // if current score is larger and is over the threshold, save it
+//                pcl::PointCloud<pcl::PointXYZ>::Ptr transformed = utils::transformCloudFromMatrix(icp.getFinalTransformation(), clusters1[i]);
+//                utils::pairwiseVisualizeCloud(transformed, clusters2[j]);
                 maxScore = score;
                 bestMatch = j;
             }
@@ -1016,7 +913,7 @@ void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::strin
         }
         unmatched.erase(bestMatch);   // remove from unmatched clusters
         matches.push_back(std::make_pair(i, bestMatch));
-        double distance = calcDistanceBetweenClouds(*clusters1[i], *clusters2[bestMatch]);
+        double distance = utils::calcDistanceBetweenClouds(*clusters1[i], *clusters2[bestMatch]);
         distVec.push_back(distance);
         std::cout << i<< "  " << bestMatch <<endl;
     }
@@ -1026,20 +923,14 @@ void clusterMatchingICP(std::string pointCloudPath1, int clusterNum1, std::strin
         const std::string current = "Match " +  std::to_string(matches[i].first) + " on " + std::to_string(matches[i].second) +
                                     " with distance of " + std::to_string(distVec[i]);
         cout << current << endl;
-        pairwiseVisualizeCloud(clusters1[matches[i].first], clusters2[matches[i].second], current);
+        utils::pairwiseVisualizeCloud(clusters1[matches[i].first], clusters2[matches[i].second], current);
     }
+    return matches;
 
 }
 
 
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr transformCloudFromMatrix(Eigen::Affine3f transform, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud){
-    // Executing the transformation
-    pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud (new pcl::PointCloud<pcl::PointXYZ> ());
-    // You can either apply transform_1 or transform_2; they are the same
-    pcl::transformPointCloud (*cloud, *transformed_cloud, transform);
-    return transformed_cloud;
-}
 
 // feature based matching
 void clusterMatchingFeature(std::string pointCloudPath1, int clusterNum1, std::string pointCloudPath2, int clusterNum2){
@@ -1126,6 +1017,61 @@ void clusterMatchingFeature(std::string pointCloudPath1, int clusterNum1, std::s
 
 }
 
+// do multi-frame matching among a list of clouds, based on the first frame
+// assume all cluster in first frame is valid (may not necessary)
+// visualize in the same window
+void multiFrameMatching(std::string pointCloudPath, int cloudNum){
+    std::string folderSuffix = "cloud";
+    std::string clusterPrefix = "cloud_cluster_";
+    std::string clusterSuffix = ".pcd";
+    std::vector<std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>> results;
+    std::vector<int> groups;
+    for(int _begin = 1;_begin < cloudNum; _begin ++){
+        std::string curFolder = pointCloudPath + folderSuffix + std::to_string(_begin) + '/';
+        std::string nextFolder = pointCloudPath + folderSuffix + std::to_string(_begin+1) + '/';
+        int curClusterNum = utils::getFileCountInFolder(curFolder)-1;   // -1 for the viewer.sh in folder
+        int nextClusterNum = utils::getFileCountInFolder(nextFolder)-1;
+        if(_begin == 1){   // create the vector to hold each cloud in the first frame
+            groups.resize(curClusterNum);
+            for(int i=0; i<curClusterNum; i++){
+                std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> curClouds;
+                std::string curPath = curFolder + clusterPrefix + std::to_string(i) + clusterSuffix;
+                pcl::PointCloud<pcl::PointXYZ>::Ptr curCloud(new pcl::PointCloud<pcl::PointXYZ>);
+                pcl::PCLPointCloud2 cloud_blob;
+                pcl::io::loadPCDFile(curPath.c_str(), cloud_blob);
+                pcl::fromPCLPointCloud2(cloud_blob, *curCloud); //* convert from pcl/PCLPointCloud2 to pcl::PointCloud<T>
+                curClouds.push_back(curCloud->makeShared());
+                results.push_back(curClouds);
+                groups[i] = i;
+            }
+        }
+        std::vector<std::pair<int, int>> matches = clusterMatchingICP(curFolder, curClusterNum, nextFolder, nextClusterNum);
+        for(int i=0; i<groups.size(); i++){
+            bool isFound = false;
+            for (int j=0; j<matches.size(); j++){
+                if(matches[j].first == groups[i]){
+                    groups[i] == matches[j].second;
+                    isFound = true;
+                    break;
+                }
+            }
+            if(!isFound){
+                groups[i] = -1;
+            }
+        }
+        std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> nextClusters = utils::loadCloudsFromDirectory(nextFolder, nextClusterNum);
+        for(int i=0; i<groups.size(); i++){
+            if(groups[i] == -1)
+                continue;
+            results[i].push_back(nextClusters[groups[i]]);
+        }
+    }
+    for(int i=0; i<results.size(); i++){
+        utils::multiVisualizeCloud(results[i]);
+    }
+
+
+}
 
 
 
@@ -1140,14 +1086,18 @@ int main(int argc, char** argv)
 //    }
 //    std::string srcPointCloudPathString = argv[1];
 //    std::string refPointCloudPathString = argv[2];
-
+//
 //    cout << srcPointCloudPathString << endl << refPointCloudPathString << endl;
 //    findVehicles(srcPointCloudPathString, refPointCloudPathString);
-    std::string pointCloudPath1 = "../data1/cloud1/";
-    int clusterNum1 = 4;
-    std::string pointCloudPath2 = "../data1/cloud2/";
-    int clusterNum2 = 4;
-    clusterMatchingICP(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
-    //clusterMatchingFeature(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
+    std::string pointCloudPath1 = "../data2/cloud3/";
+    std::string pointCloudPath = "../data2/";
+    multiFrameMatching(pointCloudPath,utils::getFileCountInFolder(pointCloudPath));
+    int clusterNum1 = 3;
+    std::string pointCloudPath2 = "../data2/cloud4/";
+    int clusterNum2 = 5;
+//    clusterMatchingICP(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
+//    clusterMatchingFeature(pointCloudPath1, clusterNum1, pointCloudPath2, clusterNum2);
+
+
     return 0;
 }
